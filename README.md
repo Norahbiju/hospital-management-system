@@ -7,7 +7,7 @@
 ![MongoDB](https://img.shields.io/badge/Database-MongoDB-brightgreen)
 ![License](https://img.shields.io/badge/License-MIT-blue)
 
-## 🎯 Project Overview
+## 🎯 Project Overview:
 
 HealthCare Plus is a full-stack web application designed to streamline hospital operations with a focus on patient care, appointment management, and administrative efficiency. The system features a modern, responsive design with comprehensive analytics and real-time updates.
 
