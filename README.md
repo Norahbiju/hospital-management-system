@@ -18,7 +18,7 @@ HealthCare Plus is a full-stack web application designed to streamline hospital 
 - **Multi-section Interface**: Dashboard, Appointments, Doctors, Patients, Analytics, Settings
 - **Real-time Statistics**: Live appointment counts, patient metrics, revenue tracking
 - **Advanced Filtering**: Filter appointments by date, status, and doctor
-- **Beautiful UI Components**: Modern cards, gradients, and hover effects
+- **Beautiful UI Components**: Modern cards, gradients, and hover effect
 
 #### 📊 **Data Visualization & Analytics**
 - **Appointment Trends**: 7-day appointment overview with line charts
