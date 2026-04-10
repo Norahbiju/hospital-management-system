@@ -34,7 +34,7 @@ jobs:
       run: |
         cd backend
         npx sonar-scanner \
-        -Dsonar.projectKey=hospital-management-system \
+        -Dsonar.projectKey=hospital \
         -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }} \
         -Dsonar.login=${{ secrets.SONAR_TOKEN }}
 
