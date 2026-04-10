@@ -13,18 +13,20 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    # 🔹 Setup Node.js
+    # 🔹 Setup Node
     - name: Setup Node
       uses: actions/setup-node@v4
       with:
         node-version: '18'
 
-    # 🔹 Install dependencies
+    # 🔹 Install Dependencies (FIXED PATH)
     - name: Install Dependencies
+      working-directory: backend
       run: npm install
 
-    # 🔹 SonarQube Scan (no Maven)
+    # 🔹 SonarQube Scan (FIXED PATH)
     - name: SonarQube Scan
+      working-directory: backend
       uses: SonarSource/sonarqube-scan-action@v6
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
