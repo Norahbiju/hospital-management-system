@@ -1,4 +1,4 @@
-name: SonarCloud + Slack Pipeline
+name: SonarCloud + Snyk + Slack Pipeline
 on:
   push:
     branches: [ "deploying" ]
@@ -36,19 +36,62 @@ jobs:
           -Dsonar.projectKey=Norahbiju_hospital-management-system
           -Dsonar.organization=norahbiju
 
+    # ✅ Snyk Security Scan
+    - name: Run Snyk Security Scan
+      uses: snyk/actions/node@master
+      env:
+        SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      with:
+        args: --severity-threshold=high --file=backend/package.json
+
+    # ✅ Snyk Upload Results to GitHub
+    - name: Upload Snyk Results to GitHub
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: snyk.sarif
+
     # 🟢 Slack Success Notification
     - name: Slack Success Notification
       if: success()
       run: |
         curl -X POST -H 'Content-type: application/json' \
         --data '{
-          "text": "✅ SonarCloud Pipeline Successful",
+          "text": "✅ Security & Code Quality Pipeline Successful",
           "blocks": [
+            {
+              "type": "header",
+              "text": {
+                "type": "plain_text",
+                "text": "✅ All Scans Passed"
+              }
+            },
+            {
+              "type": "section",
+              "fields": [
+                {
+                  "type": "mrkdwn",
+                  "text": "*Project:*\nHospital Management System"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Branch:*\ndeploying"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Commit:*\n${{ github.sha }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Triggered by:*\n${{ github.actor }}"
+                }
+              ]
+            },
             {
               "type": "section",
               "text": {
                 "type": "mrkdwn",
-                "text": "*✅ SonarCloud Analysis Complete*\n\n*Project:* Hospital Management System\n*Branch:* deploying\n*Commit:* ${{ github.sha }}\n*Triggered by:* ${{ github.actor }}\n\n✨ Code quality analysis is ready"
+                "text": "✓ SonarCloud Code Quality Analysis Passed\n✓ Snyk Security Vulnerabilities Check Passed\n✓ Dependencies Scanned"
               }
             },
             {
@@ -58,7 +101,7 @@ jobs:
                   "type": "button",
                   "text": {
                     "type": "plain_text",
-                    "text": "View SonarCloud Dashboard"
+                    "text": "SonarCloud Dashboard"
                   },
                   "url": "https://sonarcloud.io/project/overview?id=Norahbiju_hospital-management-system"
                 },
@@ -66,7 +109,7 @@ jobs:
                   "type": "button",
                   "text": {
                     "type": "plain_text",
-                    "text": "View GitHub Run"
+                    "text": "GitHub Actions"
                   },
                   "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
                 }
@@ -82,13 +125,41 @@ jobs:
       run: |
         curl -X POST -H 'Content-type: application/json' \
         --data '{
-          "text": "❌ SonarCloud Pipeline Failed",
+          "text": "❌ Security & Code Quality Pipeline Failed",
           "blocks": [
+            {
+              "type": "header",
+              "text": {
+                "type": "plain_text",
+                "text": "❌ Pipeline Failed"
+              }
+            },
+            {
+              "type": "section",
+              "fields": [
+                {
+                  "type": "mrkdwn",
+                  "text": "*Project:*\nHospital Management System"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Branch:*\ndeploying"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Commit:*\n${{ github.sha }}"
+                },
+                {
+                  "type": "mrkdwn",
+                  "text": "*Triggered by:*\n${{ github.actor }}"
+                }
+              ]
+            },
             {
               "type": "section",
               "text": {
                 "type": "mrkdwn",
-                "text": "*❌ SonarCloud Analysis Failed*\n\n*Project:* Hospital Management System\n*Branch:* deploying\n*Commit:* ${{ github.sha }}\n*Triggered by:* ${{ github.actor }}\n\n⚠️ Check the logs for details"
+                "text": "⚠️ One or more scans failed:\n• SonarCloud Code Quality\n• Snyk Security Vulnerabilities\n• Dependency Check"
               }
             },
             {
@@ -98,7 +169,7 @@ jobs:
                   "type": "button",
                   "text": {
                     "type": "plain_text",
-                    "text": "View GitHub Run"
+                    "text": "View Details"
                   },
                   "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
                 }
