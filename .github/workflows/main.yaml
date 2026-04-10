@@ -1,61 +1,54 @@
-name: SonarQube Quality Gate Pipeline
+name: SonarQube + Slack Pipeline
 
 on:
   push:
     branches: [ "deploying" ]
 
 jobs:
-  sonar-scan:
+  scan:
     runs-on: ubuntu-latest
 
     steps:
-    # 🔹 Checkout code
+    # 🔹 Checkout
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    # 🔹 Setup Java
-    - name: Set up JDK
-      uses: actions/setup-java@v4
+    # 🔹 Setup Node.js
+    - name: Setup Node
+      uses: actions/setup-node@v4
       with:
-        distribution: 'temurin'
-        java-version: '17'
+        node-version: '18'
 
-    # 🔹 Build project
-    - name: Build with Maven
-      run: mvn clean install -DskipTests
+    # 🔹 Install dependencies
+    - name: Install Dependencies
+      run: npm install
 
-    # 🔹 SonarQube Scan
+    # 🔹 SonarQube Scan (no Maven)
     - name: SonarQube Scan
-      run: |
-        mvn sonar:sonar \
-        -Dsonar.projectKey=hospital-management-system \
-        -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }} \
-        -Dsonar.login=${{ secrets.SONAR_TOKEN }}
+      uses: SonarSource/sonarqube-scan-action@v6
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
-    # 🔹 Quality Gate Check
+    # 🔹 Quality Gate
     - name: Check Quality Gate
       id: qualitygate
       uses: SonarSource/sonarqube-quality-gate-action@v1.1.0
-      timeout-minutes: 5
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-    # 🔴 Slack Notification (Failure)
-    - name: Notify Slack - Failure
+    # 🔴 Slack Failure
+    - name: Slack Failure
       if: failure() || steps.qualitygate.outputs.quality_gate_status != 'PASSED'
       run: |
         curl -X POST -H 'Content-type: application/json' \
-        --data '{
-          "text": "❌ Pipeline Failed: SonarQube Quality Gate failed for hospital-management-system. Please check vulnerabilities."
-        }' \
+        --data '{"text":"❌ Pipeline Failed - SonarQube Quality Gate failed"}' \
         ${{ secrets.SLACK_WEBHOOK_URL }}
 
-    # 🟢 Slack Notification (Success)
-    - name: Notify Slack - Success
+    # 🟢 Slack Success
+    - name: Slack Success
       if: success() && steps.qualitygate.outputs.quality_gate_status == 'PASSED'
       run: |
         curl -X POST -H 'Content-type: application/json' \
-        --data '{
-          "text": "✅ Pipeline Successful: No critical vulnerabilities found in SonarQube."
-        }' \
+        --data '{"text":"✅ Pipeline Successful - No vulnerabilities"}' \
         ${{ secrets.SLACK_WEBHOOK_URL }}
