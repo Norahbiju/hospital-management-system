@@ -1,4 +1,4 @@
-name: SonarCloud + Snyk + Slack Pipeline
+name: SonarCloud + Snyk + Slack Notifications
 on:
   push:
     branches: [ "deploying" ]
@@ -12,7 +12,7 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0  # Full history for better analysis
+        fetch-depth: 0
 
     - name: Setup Node
       uses: actions/setup-node@v4
@@ -27,153 +27,445 @@ jobs:
 
     # ✅ SonarCloud Scan
     - name: SonarCloud Scan
+      id: sonarcloud
       uses: SonarSource/sonarcloud-github-action@master
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       with:
         args: >
-          -Dsonar.projectKey=hospital
+          -Dsonar.projectKey=Norahbiju_hospital-management-system
           -Dsonar.organization=norahbiju
+      continue-on-error: true
 
-    # ✅ Snyk Security Scan
-    - name: Run Snyk Security Scan
+    # ✅ Snyk Security Scan (FIXED - pointing to backend folder)
+    - name: Snyk Scan
+      id: snyk
       uses: snyk/actions/node@master
       env:
         SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
       with:
-        args: --severity-threshold=high --sarif-file-output=snyk-docker.sarif
- 
-    - name: Upload result to GitHub Code Scanning
-      uses: github/codeql-action/upload-sarif@v3
-      with:
-        sarif_file: snyk-docker.sarif
+        args: --severity-threshold=high --file=backend/package.json
       continue-on-error: true
 
-    # 🟢 Slack Success Notification
-    - name: Slack Success Notification
-      if: success()
-      run: |
-        curl -X POST -H 'Content-type: application/json' \
-        --data '{
-          "text": "✅ Security & Code Quality Pipeline Successful",
-          "blocks": [
-            {
-              "type": "header",
-              "text": {
-                "type": "plain_text",
-                "text": "✅ All Scans Passed"
-              }
-            },
-            {
-              "type": "section",
-              "fields": [
-                {
-                  "type": "mrkdwn",
-                  "text": "*Project:*\nHospital Management System"
-                },
-                {
-                  "type": "mrkdwn",
-                  "text": "*Branch:*\ndeploying"
-                },
-                {
-                  "type": "mrkdwn",
-                  "text": "*Commit:*\n${{ github.sha }}"
-                },
-                {
-                  "type": "mrkdwn",
-                  "text": "*Triggered by:*\n${{ github.actor }}"
-                }
-              ]
-            },
-            {
-              "type": "section",
-              "text": {
-                "type": "mrkdwn",
-                "text": "✓ SonarCloud Code Quality Analysis Passed\n✓ Snyk Security Vulnerabilities Check Passed\n✓ Dependencies Scanned"
-              }
-            },
-            {
-              "type": "actions",
-              "elements": [
-                {
-                  "type": "button",
-                  "text": {
-                    "type": "plain_text",
-                    "text": "SonarCloud Dashboard"
-                  },
-                  "url": "https://sonarcloud.io/project/overview?id=Norahbiju_hospital-management-system"
-                },
-                {
-                  "type": "button",
-                  "text": {
-                    "type": "plain_text",
-                    "text": "GitHub Actions"
-                  },
-                  "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-                }
-              ]
-            }
-          ]
-        }' \
-        ${{ secrets.SLACK_WEBHOOK_URL }}
+    # ✅ Upload Snyk Results to GitHub
+    - name: Upload Snyk Results to GitHub
+      id: upload
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: snyk.sarif
+      continue-on-error: true
 
-    # 🔴 Slack Failure Notification
-    - name: Slack Failure Notification
-      if: failure()
+    # 📊 Determine Overall Status
+    - name: Check Scan Results
+      id: check_results
       run: |
-        curl -X POST -H 'Content-type: application/json' \
-        --data '{
-          "text": "❌ Security & Code Quality Pipeline Failed",
-          "blocks": [
-            {
-              "type": "header",
-              "text": {
-                "type": "plain_text",
-                "text": "❌ Pipeline Failed"
-              }
-            },
-            {
-              "type": "section",
-              "fields": [
-                {
-                  "type": "mrkdwn",
-                  "text": "*Project:*\nHospital Management System"
-                },
-                {
-                  "type": "mrkdwn",
-                  "text": "*Branch:*\ndeploying"
-                },
-                {
-                  "type": "mrkdwn",
-                  "text": "*Commit:*\n${{ github.sha }}"
-                },
-                {
-                  "type": "mrkdwn",
-                  "text": "*Triggered by:*\n${{ github.actor }}"
+        SONARCLOUD_STATUS=${{ steps.sonarcloud.outcome }}
+        SNYK_STATUS=${{ steps.snyk.outcome }}
+        
+        echo "sonarcloud_status=$SONARCLOUD_STATUS" >> $GITHUB_OUTPUT
+        echo "snyk_status=$SNYK_STATUS" >> $GITHUB_OUTPUT
+        
+        echo "SonarCloud Status: $SONARCLOUD_STATUS"
+        echo "Snyk Status: $SNYK_STATUS"
+        
+        if [[ "$SONARCLOUD_STATUS" == "failure" ]] || [[ "$SNYK_STATUS" == "failure" ]]; then
+          echo "overall_status=FAILED" >> $GITHUB_OUTPUT
+        else
+          echo "overall_status=SUCCESS" >> $GITHUB_OUTPUT
+        fi
+
+    # 🔴 Send Slack Alert on SonarCloud Failure
+    - name: Slack Alert - SonarCloud Failed
+      if: steps.sonarcloud.outcome == 'failure'
+      uses: slackapi/slack-github-action@v1.24.0
+      with:
+        payload: |
+          {
+            "text": "❌ SonarCloud Scan Failed",
+            "blocks": [
+              {
+                "type": "header",
+                "text": {
+                  "type": "plain_text",
+                  "text": "❌ SonarCloud Code Quality Scan Failed",
+                  "emoji": true
                 }
-              ]
-            },
-            {
-              "type": "section",
-              "text": {
-                "type": "mrkdwn",
-                "text": "⚠️ One or more scans failed:\n• SonarCloud Code Quality\n• Snyk Security Vulnerabilities\n• Dependency Check"
-              }
-            },
-            {
-              "type": "actions",
-              "elements": [
-                {
-                  "type": "button",
-                  "text": {
-                    "type": "plain_text",
-                    "text": "View Details"
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Project:*\nHospital Management System"
                   },
-                  "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Branch:*\ndeploying"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Commit:*\n`${{ github.sha }}`"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Triggered by:*\n${{ github.actor }}"
+                  }
+                ]
+              },
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "⚠️ *SonarCloud analysis failed*\n\nPossible reasons:\n• Network connectivity issue\n• Invalid SonarCloud token\n• Project not properly configured\n• Analysis timeout\n\nCheck GitHub Actions logs for detailed error information."
                 }
-              ]
-            }
-          ]
-        }' \
-        ${{ secrets.SLACK_WEBHOOK_URL }}
+              },
+              {
+                "type": "divider"
+              },
+              {
+                "type": "actions",
+                "elements": [
+                  {
+                    "type": "button",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "View GitHub Actions Log"
+                    },
+                    "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                  },
+                  {
+                    "type": "button",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "SonarCloud Dashboard"
+                    },
+                    "url": "https://sonarcloud.io/project/overview?id=Norahbiju_hospital-management-system",
+                    "style": "danger"
+                  }
+                ]
+              }
+            ]
+          }
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+    # 🔴 Send Slack Alert on Snyk Failure
+    - name: Slack Alert - Snyk Failed
+      if: steps.snyk.outcome == 'failure'
+      uses: slackapi/slack-github-action@v1.24.0
+      with:
+        payload: |
+          {
+            "text": "❌ Snyk Security Scan Failed",
+            "blocks": [
+              {
+                "type": "header",
+                "text": {
+                  "type": "plain_text",
+                  "text": "❌ Snyk Security Vulnerabilities Found",
+                  "emoji": true
+                }
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Project:*\nHospital Management System"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Branch:*\ndeploying"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Commit:*\n`${{ github.sha }}`"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Triggered by:*\n${{ github.actor }}"
+                  }
+                ]
+              },
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "🚨 *High severity vulnerabilities detected* in your dependencies\n\nAction Required:\n• Review vulnerable packages\n• Update to patched versions\n• Run `npm audit fix` to apply fixes\n• Snyk can auto-create fix PRs\n\nPriority: 🔴 HIGH"
+                }
+              },
+              {
+                "type": "divider"
+              },
+              {
+                "type": "actions",
+                "elements": [
+                  {
+                    "type": "button",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "View GitHub Actions Log"
+                    },
+                    "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                  },
+                  {
+                    "type": "button",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "Snyk Dashboard"
+                    },
+                    "url": "https://app.snyk.io/",
+                    "style": "danger"
+                  }
+                ]
+              }
+            ]
+          }
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+    # 🔴 Send Slack Alert on Both Failures
+    - name: Slack Alert - Both Failed
+      if: steps.sonarcloud.outcome == 'failure' && steps.snyk.outcome == 'failure'
+      uses: slackapi/slack-github-action@v1.24.0
+      with:
+        payload: |
+          {
+            "text": "🚨 CRITICAL: Both SonarCloud and Snyk Scans Failed",
+            "blocks": [
+              {
+                "type": "header",
+                "text": {
+                  "type": "plain_text",
+                  "text": "🚨 CRITICAL: Multiple Scan Failures",
+                  "emoji": true
+                }
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Project:*\nHospital Management System"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Branch:*\ndeploying"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Commit:*\n`${{ github.sha }}`"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Triggered by:*\n${{ github.actor }}"
+                  }
+                ]
+              },
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "🚨 *CRITICAL ISSUES DETECTED*\n\n❌ SonarCloud: Code quality scan failed\n❌ Snyk: Security vulnerabilities found with high severity\n\n*Immediate Action Required:*\n1. Contact DevOps team\n2. Review all failed scan logs\n3. Fix security issues immediately\n4. Do NOT deploy without fixes\n\nPriority: 🔴 CRITICAL"
+                }
+              },
+              {
+                "type": "divider"
+              },
+              {
+                "type": "actions",
+                "elements": [
+                  {
+                    "type": "button",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "View Full Logs"
+                    },
+                    "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                  },
+                  {
+                    "type": "button",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "SonarCloud"
+                    },
+                    "url": "https://sonarcloud.io/project/overview?id=Norahbiju_hospital-management-system"
+                  },
+                  {
+                    "type": "button",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "Snyk"
+                    },
+                    "url": "https://app.snyk.io/"
+                  }
+                ]
+              }
+            ]
+          }
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+    # 🟢 Send Slack Success Notification
+    - name: Slack Success Notification
+      if: success() && steps.sonarcloud.outcome == 'success' && steps.snyk.outcome == 'success'
+      uses: slackapi/slack-github-action@v1.24.0
+      with:
+        payload: |
+          {
+            "text": "✅ All Security & Quality Scans Passed",
+            "blocks": [
+              {
+                "type": "header",
+                "text": {
+                  "type": "plain_text",
+                  "text": "✅ Pipeline Successful - All Scans Passed",
+                  "emoji": true
+                }
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Project:*\nHospital Management System"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Branch:*\ndeploying"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Commit:*\n`${{ github.sha }}`"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Triggered by:*\n${{ github.actor }}"
+                  }
+                ]
+              },
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "✓ SonarCloud Code Quality Analysis: PASSED\n✓ Snyk Security Vulnerability Check: PASSED\n✓ All Dependencies Secure\n\nReady for deployment! 🚀"
+                }
+              },
+              {
+                "type": "divider"
+              },
+              {
+                "type": "actions",
+                "elements": [
+                  {
+                    "type": "button",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "SonarCloud Results"
+                    },
+                    "url": "https://sonarcloud.io/project/overview?id=Norahbiju_hospital-management-system"
+                  },
+                  {
+                    "type": "button",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "GitHub Actions"
+                    },
+                    "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                  }
+                ]
+              }
+            ]
+          }
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+    # ⚠️ Send Slack Partial Failure (Only one failed)
+    - name: Slack Partial Failure Notification
+      if: (steps.sonarcloud.outcome == 'failure' && steps.snyk.outcome == 'success') || (steps.sonarcloud.outcome == 'success' && steps.snyk.outcome == 'failure')
+      uses: slackapi/slack-github-action@v1.24.0
+      with:
+        payload: |
+          {
+            "text": "⚠️ Pipeline Partially Failed",
+            "blocks": [
+              {
+                "type": "header",
+                "text": {
+                  "type": "plain_text",
+                  "text": "⚠️ Partial Failure - One Scan Failed",
+                  "emoji": true
+                }
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Project:*\nHospital Management System"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Branch:*\ndeploying"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Commit:*\n`${{ github.sha }}`"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Triggered by:*\n${{ github.actor }}"
+                  }
+                ]
+              },
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "SonarCloud: ${{ steps.sonarcloud.outcome == 'success' && '✓ PASSED' || '✗ FAILED' }}\nSnyk: ${{ steps.snyk.outcome == 'success' && '✓ PASSED' || '✗ FAILED' }}\n\nReview the failed scan and fix issues before deploying."
+                }
+              },
+              {
+                "type": "divider"
+              },
+              {
+                "type": "actions",
+                "elements": [
+                  {
+                    "type": "button",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "View Logs"
+                    },
+                    "url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+                  },
+                  {
+                    "type": "button",
+                    "text": {
+                      "type": "plain_text",
+                      "text": "Dashboards"
+                    },
+                    "url": "https://sonarcloud.io/project/overview?id=Norahbiju_hospital-management-system"
+                  }
+                ]
+              }
+            ]
+          }
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+
+    # 🔴 Fail the workflow if either scan failed
+    - name: Fail Workflow on Scan Failures
+      if: steps.sonarcloud.outcome == 'failure' || steps.snyk.outcome == 'failure'
+      run: |
+        echo "❌ Pipeline failed due to scan failures"
+        echo "SonarCloud: ${{ steps.sonarcloud.outcome }}"
+        echo "Snyk: ${{ steps.snyk.outcome }}"
+        exit 1
