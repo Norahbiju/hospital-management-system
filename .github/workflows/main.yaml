@@ -9,30 +9,36 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # 🔹 Checkout
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    # 🔹 Setup Node
+    # 🔍 Debug (DON'T REMOVE until fixed)
+    - name: Debug Repo Structure
+      run: |
+        pwd
+        ls -R
+
     - name: Setup Node
       uses: actions/setup-node@v4
       with:
         node-version: '18'
 
-    # 🔹 Install Dependencies (FIXED PATH)
+    # ✅ Install Dependencies
     - name: Install Dependencies
-      working-directory: backend
-      run: npm install
+      run: |
+        cd backend
+        npm install
 
-    # 🔹 SonarQube Scan (FIXED PATH)
+    # ✅ SonarQube Scan
     - name: SonarQube Scan
-      working-directory: backend
-      uses: SonarSource/sonarqube-scan-action@v6
-      env:
-        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      run: |
+        cd backend
+        npx sonar-scanner \
+        -Dsonar.projectKey=hospital-management-system \
+        -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }} \
+        -Dsonar.login=${{ secrets.SONAR_TOKEN }}
 
-    # 🔹 Quality Gate
+    # ✅ Quality Gate
     - name: Check Quality Gate
       id: qualitygate
       uses: SonarSource/sonarqube-quality-gate-action@v1.1.0
@@ -52,5 +58,5 @@ jobs:
       if: success() && steps.qualitygate.outputs.quality_gate_status == 'PASSED'
       run: |
         curl -X POST -H 'Content-type: application/json' \
-        --data '{"text":"✅ Pipeline Successful - No vulnerabilities"}' \
+        --data '{"text":"✅ Pipeline Successful"}' \
         ${{ secrets.SLACK_WEBHOOK_URL }}
