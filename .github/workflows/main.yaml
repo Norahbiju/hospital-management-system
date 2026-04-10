@@ -3,73 +3,74 @@ name: Docker Build & Trivy Scan
 run-name: Build-push
 
 on:
-
   push:
-
     branches: [ "deploying" ]
 
 jobs:
-
   build-and-scan:
-
     runs-on: ubuntu-latest
 
     env:
-
       IMAGE_NAME: hospital-actions
-
       TAG: v1.1.1
 
     steps:
-
     - name: Checkout Code
-
       uses: actions/checkout@v4
 
+    # 🔹 SonarQube Scan (SAST)
     - name: SonarQube Scan
       uses: SonarSource/sonarqube-scan-action@v6
-       # Ex: v4.1.0 or sha1, See the latest version at https://github.com/marketplace/actions/official-sonarqube-scan
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 
-    - name: Set up Docker
+    # 🔹 Install Snyk
+    - name: Install Snyk
+      run: npm install -g snyk
 
+    # 🔹 Authenticate Snyk
+    - name: Authenticate Snyk
+      run: snyk auth ${{ secrets.SNYK_TOKEN }}
+
+    # 🔹 SCA Scan (Dependencies)
+    - name: Snyk SCA Scan
+      run: snyk test || true
+
+    # 🔹 Set up Docker
+    - name: Set up Docker
       uses: docker/setup-buildx-action@v3
 
+    # 🔹 Build Docker Image
     - name: Build Docker Image
-
       run: |
-
         docker build -t $IMAGE_NAME:$TAG .
 
+    # 🔹 Snyk Container Scan (optional but powerful)
+    - name: Snyk Container Scan
+      run: snyk container test $IMAGE_NAME:$TAG || true
+
+    # 🔹 Install Trivy
     - name: Install Trivy
-
       run: |
-
         sudo apt-get update
-
         sudo apt-get install -y trivy
 
+    # 🔹 Trivy Scan
     - name: Scan Docker Image with Trivy
-
       run: |
-
         trivy image --severity HIGH,CRITICAL --exit-code 0 $IMAGE_NAME:$TAG
 
+    # 🔹 Login DockerHub
     - name: Login DockerHub
-
       run: echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
 
+    # 🔹 Tag Image
     - name: Tag Dockerimage
-
       run: |
-
         docker tag $IMAGE_NAME:$TAG ${{ secrets.DOCKER_USERNAME }}/$IMAGE_NAME:$TAG
 
+    # 🔹 Push Image
     - name: Push Image
-
       run: |
-
         docker push ${{ secrets.DOCKER_USERNAME }}/$IMAGE_NAME:$TAG
- 
